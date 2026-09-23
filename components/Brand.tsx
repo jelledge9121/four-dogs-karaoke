@@ -1,0 +1,1 @@
+export default function Brand(){return <div className="brand"><div className="logoMark">4D</div><div><b className="teal">FOUR DOGS</b><div>KARAOKE</div></div></div>}
