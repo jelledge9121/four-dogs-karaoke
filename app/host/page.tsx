@@ -49,7 +49,7 @@ export default function HostHome(){
     <div className="row">
       <Brand/>
       <span className="spacer"/>
-      <button className="btn secondary" onClick={signOut}>Sign Out</button>
+      <button className="btn secondary" onClick={load}>Refresh Events</button><button className="btn secondary" onClick={signOut}>Sign Out</button>
     </div>
 
     <div className="hero">
