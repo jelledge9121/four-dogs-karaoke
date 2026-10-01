@@ -7,7 +7,7 @@ import {Song,Event} from "@/lib/types";
 const sb=createSupabaseBrowser();
 
 export default function Guest({params}:{params:Promise<{slug:string}>}){
- const[slug,setSlug]=useState(""),[event,setEvent]=useState<Event|null>(null),[q,setQ]=useState(""),[songs,setSongs]=useState<Song[]>([]),[pick,setPick]=useState<Song|null>(null),[name,setName]=useState(""),[manualArtist,setManualArtist]=useState(""),[confirmation,setConfirmation]=useState<any>(null),[error,setError]=useState(""),[loading,setLoading]=useState(true),[searching,setSearching]=useState(false),[searched,setSearched]=useState(false);
+ const[slug,setSlug]=useState(""),[event,setEvent]=useState<Event|null>(null),[q,setQ]=useState(""),[songs,setSongs]=useState<Song[]>([]),[pick,setPick]=useState<Song|null>(null),[name,setName]=useState(""),[manualArtist,setManualArtist]=useState(""),[confirmation,setConfirmation]=useState<any>(null),[error,setError]=useState(""),[loading,setLoading]=useState(true),[searching,setSearching]=useState(false),[searched,setSearched]=useState(false),[submitting,setSubmitting]=useState(false);
  const requestRef=useRef<HTMLDivElement>(null);
  const tipUrl=process.env.NEXT_PUBLIC_STRIPE_TIP_URL||"";
 
@@ -64,23 +64,40 @@ export default function Guest({params}:{params:Promise<{slug:string}>}){
 
  async function submitManual(){
   if(!q.trim()||!name.trim()||!event||!sb)return;
-  setError("");
-  const manualId=`manual:${Date.now()}`;
-  const {data,error}=await sb.rpc("submit_youtube_request",{p_slug:slug,p_singer:name,p_video_id:manualId,p_title:q.trim(),p_channel:manualArtist.trim()||"Artist not specified",p_thumbnail:null});
-  if(error){setError(error.message);return}
-  setConfirmation({name:name.trim(),title:q.trim(),position:Number(data.position),wait:Number(data.waitMinutes)});
-  setName("");setManualArtist("");window.scrollTo({top:0,behavior:"smooth"});
+  setError("");setSubmitting(true);
+  try{
+   const manualId=`manual:${Date.now()}`;
+   const {data,error}=await sb.rpc("submit_youtube_request",{p_slug:slug,p_singer:name.trim(),p_video_id:manualId,p_title:q.trim(),p_channel:manualArtist.trim()||"Artist not specified",p_thumbnail:null});
+   if(error)throw error;
+   const result=Array.isArray(data)?data[0]:data;
+   setConfirmation({name:name.trim(),title:q.trim(),position:Number(result?.position||1),wait:Number(result?.waitMinutes||result?.wait_minutes||0)});
+   setName("");setManualArtist("");window.scrollTo({top:0,behavior:"smooth"});
+  }catch(e:any){
+   setError(e?.message||"Could not submit your request. Please see the Four Dogs host.");
+  }finally{
+   setSubmitting(false);
+  }
  }
 
  async function submit(){
   if(!pick||!name.trim()||!event||!sb)return;
-  setError("");
-  let data:any,error:any;
-  if(pick.source==="KARAFUN"||pick.source==="YOUTUBE")({data,error}=await sb.rpc("submit_youtube_request",{p_slug:slug,p_singer:name,p_video_id:pick.videoId,p_title:pick.title,p_channel:pick.channel,p_thumbnail:pick.thumbnail||null}));
-  else({data,error}=await sb.rpc("submit_guest_request",{p_slug:slug,p_singer:name,p_song_id:pick.id}));
-  if(error){setError(error.message);return}
-  setConfirmation({name:name.trim(),title:pick.title,position:Number(data.position),wait:Number(data.waitMinutes)});
-  setPick(null);setName("");window.scrollTo({top:0,behavior:"smooth"});
+  setError("");setSubmitting(true);
+  try{
+   let data:any,error:any;
+   if(pick.source==="KARAFUN"||pick.source==="YOUTUBE"){
+    ({data,error}=await sb.rpc("submit_youtube_request",{p_slug:slug,p_singer:name.trim(),p_video_id:pick.videoId,p_title:pick.title,p_channel:pick.channel,p_thumbnail:pick.thumbnail||null}));
+   }else{
+    ({data,error}=await sb.rpc("submit_guest_request",{p_slug:slug,p_singer:name.trim(),p_song_id:pick.id}));
+   }
+   if(error)throw error;
+   const result=Array.isArray(data)?data[0]:data;
+   setConfirmation({name:name.trim(),title:pick.title,position:Number(result?.position||1),wait:Number(result?.waitMinutes||result?.wait_minutes||0)});
+   setPick(null);setName("");window.scrollTo({top:0,behavior:"smooth"});
+  }catch(e:any){
+   setError(e?.message||"Could not join the rotation. Please see the Four Dogs host.");
+  }finally{
+   setSubmitting(false);
+  }
  }
 
  function selectSong(s:Song){setPick(s);setConfirmation(null)}
@@ -119,7 +136,7 @@ export default function Guest({params}:{params:Promise<{slug:string}>}){
    <input className="input" value={manualArtist} onChange={x=>setManualArtist(x.target.value)} placeholder="Artist name"/>
    <label>Your singer name</label>
    <input className="input" value={name} onChange={x=>setName(x.target.value)} maxLength={40} placeholder="Enter your name"/>
-   <button className="btn" disabled={!name.trim()||!event.requestsOpen} onClick={submitManual}>REQUEST THIS SONG</button>
+   <button className="btn" disabled={!name.trim()||!event.requestsOpen||submitting} onClick={submitManual}>{submitting?"SUBMITTING…":"REQUEST THIS SONG"}</button>
   </div>}
   {pick&&<div className="card selectedCard" ref={requestRef}>
    <span className="status">YOUR SONG</span>
@@ -128,7 +145,7 @@ export default function Guest({params}:{params:Promise<{slug:string}>}){
    <label>Your singer name</label>
    <input autoFocus className="input" value={name} onChange={x=>setName(x.target.value)} onKeyDown={x=>x.key==="Enter"&&name.trim()&&submit()} maxLength={40} placeholder="Enter your name"/>
    <div className="row">
-    <button className="btn" disabled={!name.trim()||!event.requestsOpen} onClick={submit}>JOIN THE ROTATION</button>
+    <button className="btn" disabled={!name.trim()||!event.requestsOpen||submitting} onClick={submit}>{submitting?"JOINING…":"JOIN THE ROTATION"}</button>
     <button className="btn secondary" onClick={()=>setPick(null)}>Choose Another</button>
    </div>
   </div>}
