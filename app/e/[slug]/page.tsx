@@ -16,7 +16,34 @@ export default function Guest({params}:{params:Promise<{slug:string}>}){
 
  async function loadCurated(s:string,query:string){
   if(!sb)return;
-  const {data}=await sb.rpc("search_curated_songs",{p_slug:s,p_query:query.trim()});
+  const term=query.trim();
+  if(term.length>=2){
+   const safe=term.replace(/[%_,]/g," ");
+   const {data:catalog,error:catalogError}=await sb
+    .from("karafun_catalog")
+    .select("id,title,artist,year,duo,explicit,styles,languages")
+    .or(`title.ilike.%${safe}%,artist.ilike.%${safe}%`)
+    .gte("year",1970)
+    .lte("year",1989)
+    .limit(50);
+   if(!catalogError&&catalog){
+    setSongs(catalog.map((x:any)=>({
+     id:`karafun:${x.id}`,
+     title:x.title,
+     artist:`${x.artist} (${x.year})`,
+     videoId:`karafun:${x.id}`,
+     channel:x.artist,
+     thumbnail:"",
+     genre:x.styles||"Karaoke",
+     rating:x.explicit?"21+":"GENERAL",
+     tags:[],
+     source:"YOUTUBE",
+     verified:true
+    })));
+    return;
+   }
+  }
+  const {data}=await sb.rpc("search_curated_songs",{p_slug:s,p_query:term});
   if(data)setSongs(data.map((x:any)=>({id:x.id,title:x.title,artist:x.artist,videoId:x.video_id||"",channel:x.channel||"Four Dogs",thumbnail:x.thumbnail||"",genre:x.genre||"Karaoke",rating:x.content_rating||"GENERAL",tags:[],source:"CURATED",verified:true})));
  }
 
@@ -80,7 +107,7 @@ export default function Guest({params}:{params:Promise<{slug:string}>}){
    <label>What do you want to sing?</label>
    <input className="input" value={q} onChange={x=>setQ(x.target.value)} onKeyDown={x=>x.key==="Enter"&&search()} placeholder="Song title or artist"/>
    <button className="btn" disabled={searching||!event.requestsOpen} onClick={search}>{searching?"SEARCHING…":"SEARCH SONGS"}</button>
-   <p className="muted">Choose the closest match. Your host will verify availability in KaraFun before your turn.</p>
+   <p className="muted">Search the Four Dogs 70s & 80s KaraFun catalog by song title or artist.</p>
   </div>
   {searched&&results.length===0&&q.trim()&&<div className="card selectedCard" ref={requestRef}>
    <span className="status">NO MATCH FOUND</span>
@@ -105,7 +132,7 @@ export default function Guest({params}:{params:Promise<{slug:string}>}){
   </div>}
   {results.map(s=><div className="card song" key={s.id}>
    {s.thumbnail&&<img src={s.thumbnail} alt=""/>}
-   <div><b>{s.title}</b><div>{s.artist}</div><span className="pill">{s.source==="CURATED"?"FOUR DOGS PICK":"SONG MATCH"}</span></div>
+   <div><b>{s.title}</b><div>{s.artist}</div><span className="pill">{s.verified?"KARAFUN CATALOG":"SONG MATCH"}</span></div>
    <span className="spacer"/>
    <button className="btn" onClick={()=>selectSong(s)}>{pick?.id===s.id?"SELECTED":"SELECT SONG"}</button>
   </div>)}
