@@ -66,11 +66,18 @@ export default function Guest({params}:{params:Promise<{slug:string}>}){
   if(!q.trim()||!name.trim()||!event||!sb)return;
   setError("");setSubmitting(true);
   try{
-   const manualId=`manual:${Date.now()}`;
-   const {data,error}=await sb.rpc("submit_youtube_request",{p_slug:slug,p_singer:name.trim(),p_video_id:manualId,p_title:q.trim(),p_channel:manualArtist.trim()||"Artist not specified",p_thumbnail:null});
+   const {error}=await sb.from("karaoke_requests").insert({
+    event_slug:slug,
+    singer_name:name.trim(),
+    song_catalog_id:null,
+    song_title:q.trim(),
+    artist:manualArtist.trim()||"Artist not specified",
+    status:"PENDING"
+   });
    if(error)throw error;
-   const result=Array.isArray(data)?data[0]:data;
-   setConfirmation({name:name.trim(),title:q.trim(),position:Number(result?.position||1),wait:Number(result?.waitMinutes||result?.wait_minutes||0)});
+   const {count}=await sb.from("karaoke_requests").select("id",{count:"exact",head:true}).eq("event_slug",slug).in("status",["PENDING","APPROVED"]);
+   const position=count||1;
+   setConfirmation({name:name.trim(),title:q.trim(),position,wait:Math.max(0,(position-1)*Number(event.averageSongMinutes||4.5))});
    setName("");setManualArtist("");window.scrollTo({top:0,behavior:"smooth"});
   }catch(e:any){
    setError(e?.message||"Could not submit your request. Please see the Four Dogs host.");
@@ -83,15 +90,20 @@ export default function Guest({params}:{params:Promise<{slug:string}>}){
   if(!pick||!name.trim()||!event||!sb)return;
   setError("");setSubmitting(true);
   try{
-   let data:any,error:any;
-   if(pick.source==="KARAFUN"||pick.source==="YOUTUBE"){
-    ({data,error}=await sb.rpc("submit_youtube_request",{p_slug:slug,p_singer:name.trim(),p_video_id:pick.videoId,p_title:pick.title,p_channel:pick.channel,p_thumbnail:pick.thumbnail||null}));
-   }else{
-    ({data,error}=await sb.rpc("submit_guest_request",{p_slug:slug,p_singer:name.trim(),p_song_id:pick.id}));
-   }
+   const rawCatalogId=pick.id.startsWith("karafun:")?pick.id.replace("karafun:",""):null;
+   const artistOnly=pick.channel||pick.artist.replace(/\s*\(\d{4}\)\s*$/,"");
+   const {error}=await sb.from("karaoke_requests").insert({
+    event_slug:slug,
+    singer_name:name.trim(),
+    song_catalog_id:rawCatalogId,
+    song_title:pick.title,
+    artist:artistOnly,
+    status:"PENDING"
+   });
    if(error)throw error;
-   const result=Array.isArray(data)?data[0]:data;
-   setConfirmation({name:name.trim(),title:pick.title,position:Number(result?.position||1),wait:Number(result?.waitMinutes||result?.wait_minutes||0)});
+   const {count}=await sb.from("karaoke_requests").select("id",{count:"exact",head:true}).eq("event_slug",slug).in("status",["PENDING","APPROVED"]);
+   const position=count||1;
+   setConfirmation({name:name.trim(),title:pick.title,position,wait:Math.max(0,(position-1)*Number(event.averageSongMinutes||4.5))});
    setPick(null);setName("");window.scrollTo({top:0,behavior:"smooth"});
   }catch(e:any){
    setError(e?.message||"Could not join the rotation. Please see the Four Dogs host.");
