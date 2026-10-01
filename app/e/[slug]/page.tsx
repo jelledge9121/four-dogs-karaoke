@@ -7,7 +7,7 @@ import {Song,Event} from "@/lib/types";
 const sb=createSupabaseBrowser();
 
 export default function Guest({params}:{params:Promise<{slug:string}>}){
- const[slug,setSlug]=useState(""),[event,setEvent]=useState<Event|null>(null),[q,setQ]=useState(""),[songs,setSongs]=useState<Song[]>([]),[yt,setYt]=useState<Song[]>([]),[pick,setPick]=useState<Song|null>(null),[name,setName]=useState(""),[confirmation,setConfirmation]=useState<any>(null),[error,setError]=useState(""),[loading,setLoading]=useState(true),[searching,setSearching]=useState(false);
+ const[slug,setSlug]=useState(""),[event,setEvent]=useState<Event|null>(null),[q,setQ]=useState(""),[songs,setSongs]=useState<Song[]>([]),[yt,setYt]=useState<Song[]>([]),[pick,setPick]=useState<Song|null>(null),[name,setName]=useState(""),[manualArtist,setManualArtist]=useState(""),[confirmation,setConfirmation]=useState<any>(null),[error,setError]=useState(""),[loading,setLoading]=useState(true),[searching,setSearching]=useState(false),[searched,setSearched]=useState(false);
  const requestRef=useRef<HTMLDivElement>(null);
  const tipUrl=process.env.NEXT_PUBLIC_STRIPE_TIP_URL||"";
 
@@ -29,7 +29,18 @@ export default function Guest({params}:{params:Promise<{slug:string}>}){
     setYt((d.results||[]).map((x:any)=>({id:`yt:${x.videoId}`,title:x.title,artist:x.channel,videoId:x.videoId,channel:x.channel,thumbnail:x.thumbnail||"",genre:"Karaoke",rating:"GENERAL",tags:[],source:"YOUTUBE",verified:false})));
    }catch(e:any){setError(e.message)}
   }
+  setSearched(true);
   setSearching(false);
+ }
+
+ async function submitManual(){
+  if(!q.trim()||!name.trim()||!event||!sb)return;
+  setError("");
+  const manualId=`manual:${Date.now()}`;
+  const {data,error}=await sb.rpc("submit_youtube_request",{p_slug:slug,p_singer:name,p_video_id:manualId,p_title:q.trim(),p_channel:manualArtist.trim()||"Artist not specified",p_thumbnail:null});
+  if(error){setError(error.message);return}
+  setConfirmation({name:name.trim(),title:q.trim(),position:Number(data.position),wait:Number(data.waitMinutes)});
+  setName("");setManualArtist("");window.scrollTo({top:0,behavior:"smooth"});
  }
 
  async function submit(){
@@ -71,6 +82,16 @@ export default function Guest({params}:{params:Promise<{slug:string}>}){
    <button className="btn" disabled={searching||!event.requestsOpen} onClick={search}>{searching?"SEARCHING…":"SEARCH SONGS"}</button>
    <p className="muted">Choose the closest match. Your host will verify availability in KaraFun before your turn.</p>
   </div>
+  {searched&&results.length===0&&q.trim()&&<div className="card selectedCard" ref={requestRef}>
+   <span className="status">NO MATCH FOUND</span>
+   <h2>Request "{q.trim()}" anyway</h2>
+   <p className="muted">Your host will verify the song in KaraFun before your turn.</p>
+   <label>Artist (optional)</label>
+   <input className="input" value={manualArtist} onChange={x=>setManualArtist(x.target.value)} placeholder="Artist name"/>
+   <label>Your singer name</label>
+   <input className="input" value={name} onChange={x=>setName(x.target.value)} maxLength={40} placeholder="Enter your name"/>
+   <button className="btn" disabled={!name.trim()||!event.requestsOpen} onClick={submitManual}>REQUEST THIS SONG</button>
+  </div>}
   {pick&&<div className="card selectedCard" ref={requestRef}>
    <span className="status">YOUR SONG</span>
    <h2>{pick.title}</h2>
