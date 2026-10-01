@@ -22,6 +22,10 @@ export default function HostEvent({params}:{params:Promise<{slug:string}>}){
  const[rows,setRows]=useState<Req[]>([]);
  const[msg,setMsg]=useState("Loading…");
  const[copied,setCopied]=useState("");
+ const[manualSinger,setManualSinger]=useState("");
+ const[manualSong,setManualSong]=useState("");
+ const[manualArtist,setManualArtist]=useState("");
+ const[adding,setAdding]=useState(false);
 
  useEffect(()=>{let channel:any;params.then(async x=>{
   setSlug(x.slug);
@@ -58,6 +62,25 @@ export default function HostEvent({params}:{params:Promise<{slug:string}>}){
   if(error)setMsg(error.message); else await load(slug);
  }
 
+ async function addManualRequest(){
+  if(!sb||!event||!manualSinger.trim()||!manualSong.trim()||adding)return;
+  setAdding(true);setMsg("");
+  const {error}=await sb.from("karaoke_requests").insert({
+   event_slug:event.slug,
+   singer_name:manualSinger.trim(),
+   song_catalog_id:null,
+   song_title:manualSong.trim(),
+   artist:manualArtist.trim()||"Artist not specified",
+   status:"PENDING"
+  });
+  if(error)setMsg(error.message);
+  else{
+   setManualSinger("");setManualSong("");setManualArtist("");
+   await load(slug);
+  }
+  setAdding(false);
+ }
+
  async function copySearch(r:Req){
   await navigator.clipboard.writeText(`${r.song_title} ${r.artist}`);
   setCopied(r.id);setTimeout(()=>setCopied(""),1200);
@@ -86,6 +109,17 @@ export default function HostEvent({params}:{params:Promise<{slug:string}>}){
   </div>
 
   {msg&&<div className="card"><b>{msg}</b></div>}
+
+  <div className="card">
+   <span className="status">HOST FALLBACK</span>
+   <h3>Add a Request Manually</h3>
+   <div className="grid grid2">
+    <input className="input" value={manualSinger} onChange={e=>setManualSinger(e.target.value)} placeholder="Singer name"/>
+    <input className="input" value={manualSong} onChange={e=>setManualSong(e.target.value)} placeholder="Song title"/>
+   </div>
+   <input className="input" value={manualArtist} onChange={e=>setManualArtist(e.target.value)} placeholder="Artist (optional)"/>
+   <button className="btn secondary" disabled={adding||!manualSinger.trim()||!manualSong.trim()} onClick={addManualRequest}>{adding?"ADDING…":"ADD TO REQUESTS"}</button>
+  </div>
 
   <h2>Now Singing</h2>
   <div className="card nowCard">
