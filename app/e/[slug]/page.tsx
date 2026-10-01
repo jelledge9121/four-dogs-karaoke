@@ -9,6 +9,7 @@ const sb=createSupabaseBrowser();
 export default function Guest({params}:{params:Promise<{slug:string}>}){
  const[slug,setSlug]=useState(""),[event,setEvent]=useState<Event|null>(null),[q,setQ]=useState(""),[songs,setSongs]=useState<Song[]>([]),[pick,setPick]=useState<Song|null>(null),[name,setName]=useState(""),[manualArtist,setManualArtist]=useState(""),[confirmation,setConfirmation]=useState<any>(null),[error,setError]=useState(""),[loading,setLoading]=useState(true),[searching,setSearching]=useState(false),[searched,setSearched]=useState(false),[submitting,setSubmitting]=useState(false);
  const requestRef=useRef<HTMLDivElement>(null);
+ const submitLock=useRef(false);
  const tipUrl=process.env.NEXT_PUBLIC_STRIPE_TIP_URL||"";
 
  useEffect(()=>{params.then(async({slug})=>{setSlug(slug);if(sb){const {data}=await sb.rpc("get_public_event",{p_slug:slug});if(data){setEvent({id:data.id,slug:data.slug,name:data.name,venue:data.venue,date:data.eventDate,requestsOpen:data.requestsOpen,openYouTube:data.openYouTube,rating:data.rating,averageSongMinutes:Number(data.averageSongMinutes||4.5),newSingerPolicy:data.newSingerPolicy});await loadCurated(slug,"");}setLoading(false)}})},[params]);
@@ -63,11 +64,12 @@ export default function Guest({params}:{params:Promise<{slug:string}>}){
  }
 
  async function submitManual(){
-  if(!q.trim()||!name.trim()||!event||!sb)return;
+  if(!q.trim()||!name.trim()||!event||!sb||submitLock.current)return;
+  submitLock.current=true;
   setError("");setSubmitting(true);
   try{
    const {error}=await sb.from("karaoke_requests").insert({
-    event_slug:slug,
+    event_slug:event.slug,
     singer_name:name.trim(),
     song_catalog_id:null,
     song_title:q.trim(),
@@ -75,25 +77,27 @@ export default function Guest({params}:{params:Promise<{slug:string}>}){
     status:"PENDING"
    });
    if(error)throw error;
-   const {count}=await sb.from("karaoke_requests").select("id",{count:"exact",head:true}).eq("event_slug",slug).in("status",["PENDING","APPROVED"]);
+   const {count}=await sb.from("karaoke_requests").select("id",{count:"exact",head:true}).eq("event_slug",event.slug).in("status",["PENDING","APPROVED"]);
    const position=count||1;
    setConfirmation({name:name.trim(),title:q.trim(),position,wait:Math.max(0,(position-1)*Number(event.averageSongMinutes||4.5))});
    setName("");setManualArtist("");window.scrollTo({top:0,behavior:"smooth"});
   }catch(e:any){
    setError(e?.message||"Could not submit your request. Please see the Four Dogs host.");
   }finally{
+   submitLock.current=false;
    setSubmitting(false);
   }
  }
 
  async function submit(){
-  if(!pick||!name.trim()||!event||!sb)return;
+  if(!pick||!name.trim()||!event||!sb||submitLock.current)return;
+  submitLock.current=true;
   setError("");setSubmitting(true);
   try{
    const rawCatalogId=pick.id.startsWith("karafun:")?pick.id.replace("karafun:",""):null;
    const artistOnly=pick.channel||pick.artist.replace(/\s*\(\d{4}\)\s*$/,"");
    const {error}=await sb.from("karaoke_requests").insert({
-    event_slug:slug,
+    event_slug:event.slug,
     singer_name:name.trim(),
     song_catalog_id:rawCatalogId,
     song_title:pick.title,
@@ -101,13 +105,14 @@ export default function Guest({params}:{params:Promise<{slug:string}>}){
     status:"PENDING"
    });
    if(error)throw error;
-   const {count}=await sb.from("karaoke_requests").select("id",{count:"exact",head:true}).eq("event_slug",slug).in("status",["PENDING","APPROVED"]);
+   const {count}=await sb.from("karaoke_requests").select("id",{count:"exact",head:true}).eq("event_slug",event.slug).in("status",["PENDING","APPROVED"]);
    const position=count||1;
    setConfirmation({name:name.trim(),title:pick.title,position,wait:Math.max(0,(position-1)*Number(event.averageSongMinutes||4.5))});
    setPick(null);setName("");window.scrollTo({top:0,behavior:"smooth"});
   }catch(e:any){
    setError(e?.message||"Could not join the rotation. Please see the Four Dogs host.");
   }finally{
+   submitLock.current=false;
    setSubmitting(false);
   }
  }
