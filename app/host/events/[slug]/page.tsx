@@ -15,8 +15,11 @@ export default function Host({params}:{params:Promise<{slug:string}>}){
 
  async function load(s:string){
   if(!sb)return;
-  const {data:e,error:ee}=await sb.from("events").select("id,name,slug,requests_open,average_song_minutes,venues(name)").ilike("slug",s).single();
+  const {data:events,error:ee}=await sb.from("events").select("id,name,slug,requests_open,average_song_minutes,venues(name)").ilike("slug",s).limit(2);
   if(ee){setMsg(ee.message);return}
+  if(!events||events.length===0){setMsg(`No event found for ${s}.`);setEvent(null);return}
+  if(events.length>1){setMsg(`More than one event is using the code ${s}. Using the first match. Please clean up the duplicate event in Supabase.`)}
+  const e=events[0];
   setEvent(e);
   const {data:r,error}=await sb.from("requests").select("id,status,created_at,provider_payload,singers(display_name),songs(title,artist,provider_song_id,thumbnail)").eq("event_id",e.id).order("created_at");
   if(error){setMsg(error.message);return}
