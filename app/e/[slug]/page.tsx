@@ -7,7 +7,7 @@ import {Song,Event} from "@/lib/types";
 const sb=createSupabaseBrowser();
 
 export default function Guest({params}:{params:Promise<{slug:string}>}){
- const[slug,setSlug]=useState(""),[event,setEvent]=useState<Event|null>(null),[q,setQ]=useState(""),[songs,setSongs]=useState<Song[]>([]),[yt,setYt]=useState<Song[]>([]),[pick,setPick]=useState<Song|null>(null),[name,setName]=useState(""),[manualArtist,setManualArtist]=useState(""),[confirmation,setConfirmation]=useState<any>(null),[error,setError]=useState(""),[loading,setLoading]=useState(true),[searching,setSearching]=useState(false),[searched,setSearched]=useState(false);
+ const[slug,setSlug]=useState(""),[event,setEvent]=useState<Event|null>(null),[q,setQ]=useState(""),[songs,setSongs]=useState<Song[]>([]),[pick,setPick]=useState<Song|null>(null),[name,setName]=useState(""),[manualArtist,setManualArtist]=useState(""),[confirmation,setConfirmation]=useState<any>(null),[error,setError]=useState(""),[loading,setLoading]=useState(true),[searching,setSearching]=useState(false),[searched,setSearched]=useState(false);
  const requestRef=useRef<HTMLDivElement>(null);
  const tipUrl=process.env.NEXT_PUBLIC_STRIPE_TIP_URL||"";
 
@@ -17,45 +17,47 @@ export default function Guest({params}:{params:Promise<{slug:string}>}){
  async function loadCurated(s:string,query:string){
   if(!sb)return;
   const term=query.trim();
-  if(term.length>=2){
-   const safe=term.replace(/[%_,]/g," ");
-   const {data:catalog,error:catalogError}=await sb
-    .from("karafun_catalog")
-    .select("id,title,artist,year,duo,explicit,styles,languages")
-    .or(`title.ilike.%${safe}%,artist.ilike.%${safe}%`)
-    .gte("year",1970)
-    .lte("year",1989)
-    .limit(50);
-   if(!catalogError&&catalog){
-    setSongs(catalog.map((x:any)=>({
-     id:`karafun:${x.id}`,
-     title:x.title,
-     artist:`${x.artist} (${x.year})`,
-     videoId:`karafun:${x.id}`,
-     channel:x.artist,
-     thumbnail:"",
-     genre:x.styles||"Karaoke",
-     rating:x.explicit?"21+":"GENERAL",
-     tags:[],
-     source:"YOUTUBE",
-     verified:true
-    })));
-    return;
-   }
+  if(term.length<2){setSongs([]);return}
+
+  const base=()=>sb
+   .from("karafun_catalog")
+   .select("id,title,artist,year,duo,explicit,styles,languages")
+   .gte("year",1970)
+   .lte("year",1989)
+   .limit(30);
+
+  const [{data:byTitle,error:titleError},{data:byArtist,error:artistError}]=await Promise.all([
+   base().ilike("title",`%${term}%`),
+   base().ilike("artist",`%${term}%`)
+  ]);
+
+  if(titleError||artistError){
+   setSongs([]);
+   setError(titleError?.message||artistError?.message||"KaraFun catalog search failed.");
+   return;
   }
-  const {data}=await sb.rpc("search_curated_songs",{p_slug:s,p_query:term});
-  if(data)setSongs(data.map((x:any)=>({id:x.id,title:x.title,artist:x.artist,videoId:x.video_id||"",channel:x.channel||"Four Dogs",thumbnail:x.thumbnail||"",genre:x.genre||"Karaoke",rating:x.content_rating||"GENERAL",tags:[],source:"CURATED",verified:true})));
+
+  const merged=[...(byTitle||[]),...(byArtist||[])];
+  const unique=Array.from(new Map(merged.map((x:any)=>[x.id,x])).values()).slice(0,50);
+
+  setSongs(unique.map((x:any)=>({
+   id:`karafun:${x.id}`,
+   title:x.title,
+   artist:`${x.artist} (${x.year})`,
+   videoId:`karafun:${x.id}`,
+   channel:x.artist,
+   thumbnail:"",
+   genre:x.styles||"Karaoke",
+   rating:x.explicit?"21+":"GENERAL",
+   tags:[],
+   source:"KARAFUN",
+   verified:true
+  })));
  }
 
  async function search(){
-  setError("");setPick(null);setSearching(true);await loadCurated(slug,q);setYt([]);
-  if(event?.openYouTube&&q.trim().length>=2){
-   try{
-    const r=await fetch(`/api/youtube/search?q=${encodeURIComponent(q)}`),d=await r.json();
-    if(!r.ok)throw new Error(d.error||"Song search failed");
-    setYt((d.results||[]).map((x:any)=>({id:`yt:${x.videoId}`,title:x.title,artist:x.channel,videoId:x.videoId,channel:x.channel,thumbnail:x.thumbnail||"",genre:"Karaoke",rating:"GENERAL",tags:[],source:"YOUTUBE",verified:false})));
-   }catch(e:any){setError(e.message)}
-  }
+  setError("");setPick(null);setSearching(true);
+  await loadCurated(slug,q);
   setSearched(true);
   setSearching(false);
  }
@@ -74,7 +76,7 @@ export default function Guest({params}:{params:Promise<{slug:string}>}){
   if(!pick||!name.trim()||!event||!sb)return;
   setError("");
   let data:any,error:any;
-  if(pick.source==="YOUTUBE")({data,error}=await sb.rpc("submit_youtube_request",{p_slug:slug,p_singer:name,p_video_id:pick.videoId,p_title:pick.title,p_channel:pick.channel,p_thumbnail:pick.thumbnail||null}));
+  if(pick.source==="KARAFUN"||pick.source==="YOUTUBE")({data,error}=await sb.rpc("submit_youtube_request",{p_slug:slug,p_singer:name,p_video_id:pick.videoId,p_title:pick.title,p_channel:pick.channel,p_thumbnail:pick.thumbnail||null}));
   else({data,error}=await sb.rpc("submit_guest_request",{p_slug:slug,p_singer:name,p_song_id:pick.id}));
   if(error){setError(error.message);return}
   setConfirmation({name:name.trim(),title:pick.title,position:Number(data.position),wait:Number(data.waitMinutes)});
@@ -85,7 +87,7 @@ export default function Guest({params}:{params:Promise<{slug:string}>}){
 
  if(loading)return <main className="shell"><Brand/><div className="card">Loading event…</div></main>;
  if(!event)return <main className="shell"><Brand/><div className="card">Event not found.</div></main>;
- const results=[...songs,...yt];
+ const results=songs;
 
  return <main className="shell">
   <Brand/>
