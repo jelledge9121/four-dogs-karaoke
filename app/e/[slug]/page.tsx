@@ -124,7 +124,7 @@ export default function Guest({params}:{params:Promise<{slug:string}>}){
  const results=songs;
 
  return <main className="shell">
-  <Brand/>
+  {event.slug?.toLowerCase()==="holidayparty" ? <div style={{display:"flex",justifyContent:"center",marginBottom:18}}><img src="/brooke-holladay-party-logo.webp" alt="Four Dogs Entertainment retro party logo" style={{width:"min(360px,92vw)",height:"auto",display:"block",borderRadius:16}}/></div> : <Brand/>}
   <div className="card">
    <h1>{event.name}</h1>
    <p>{event.venue}</p>
